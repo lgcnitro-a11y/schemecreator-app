@@ -1,14 +1,17 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import { TransformWrapper, TransformComponent } from 'react-zoom-pan-pinch';
 import type { ReactZoomPanPinchRef } from 'react-zoom-pan-pinch';
 import { Grid } from './components/Grid';
-import { Toolbar } from './components/Toolbar';
+import { BottomBar } from './components/BottomBar';
+import { PopupPanel } from './components/PopupPanel';
 import { ColorPalette } from './components/ColorPalette';
 import type { CellData, ColorOption, Pattern } from './types';
 import { savePattern, loadPattern } from './utils/storage';
 import { exportToPDF } from './utils/pdfExport';
 
-// Define palette based on requirements
+// @ts-ignore
+import { useRegisterSW } from 'virtual:pwa-register/react';
+
 const PALETTE: ColorOption[] = [
   { symbol: 'H', color: '#555555', name: 'Mörkgrå' },
   { symbol: 'V', color: '#aaaaaa', name: 'Ljusgrå' },
@@ -22,22 +25,22 @@ const PALETTE: ColorOption[] = [
   { symbol: '□', color: '#ffffff', name: 'Vit' },
 ];
 
+type PanelType = 'color' | 'grid' | 'file' | null;
+
 function App() {
-  const [gridSize, setGridSize] = useState<number>(40);
-  const [cells, setCells] = useState<CellData[][]>([]);
-  const [selectedColor, setSelectedColor] = useState<ColorOption | null>(PALETTE[5]); // Default to Black 'X'
-  const [patternName, setPatternName] = useState('Mitt Mönster');
+  const {
+    needRefresh: [needRefresh, setNeedRefresh],
+    updateServiceWorker,
+  } = useRegisterSW({
+    onRegistered(r: any) {
+      console.log('SW Registered: ' + r);
+    },
+    onRegisterError(error: any) {
+      console.log('SW registration error', error);
+    },
+  });
 
-  const transformComponentRef = useRef<ReactZoomPanPinchRef | null>(null);
-
-  // Initialize grid
-  useEffect(() => {
-    if (cells.length === 0) {
-      initializeGrid(gridSize);
-    }
-  }, []);
-
-  const initializeGrid = (size: number) => {
+  const createGrid = (size: number) => {
     const newCells: CellData[][] = [];
     for (let r = 0; r < size; r++) {
       const row: CellData[] = [];
@@ -46,7 +49,19 @@ function App() {
       }
       newCells.push(row);
     }
-    setCells(newCells);
+    return newCells;
+  };
+
+  const [gridSize, setGridSize] = useState<number>(40);
+  const [cells, setCells] = useState<CellData[][]>(() => createGrid(40));
+  const [selectedColor, setSelectedColor] = useState<ColorOption | null>(PALETTE[5]);
+  const [patternName, setPatternName] = useState('Mitt Mönster');
+  const [activePanel, setActivePanel] = useState<PanelType>(null);
+
+  const transformComponentRef = useRef<ReactZoomPanPinchRef | null>(null);
+
+  const initializeGrid = (size: number) => {
+    setCells(createGrid(size));
   };
 
   const handleCellClick = useCallback((row: number, col: number) => {
@@ -60,7 +75,6 @@ function App() {
           symbol: selectedColor.symbol
         };
       } else {
-        // Eraser logic
         newRow[col] = { color: null, symbol: null };
       }
 
@@ -99,8 +113,8 @@ function App() {
           setPatternName(pattern.name);
           setGridSize(pattern.width);
           setCells(pattern.cells);
-          // Reset zoom when loading new?
           transformComponentRef.current?.resetTransform();
+          setActivePanel(null);
         } catch (err) {
           alert('Kunde inte ladda filen: ' + err);
         }
@@ -126,67 +140,137 @@ function App() {
     }
   };
 
+  const togglePanel = (panel: PanelType) => {
+    setActivePanel(prev => prev === panel ? null : panel);
+  };
+
+  const handleSelectColor = (color: ColorOption | null) => {
+    setSelectedColor(color);
+    setActivePanel(null);
+  };
+
+  const gridSizes = [20, 30, 40, 50, 60, 80, 100];
+
   return (
     <div className="app-container">
-      <header className="header">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          <h1>SchemeCreator</h1>
-          <input
-            type="text"
-            value={patternName}
-            onChange={(e) => setPatternName(e.target.value)}
-            style={{
-              fontSize: '1.2rem',
-              padding: '0.25rem',
-              border: '1px solid #ddd',
-              borderRadius: '4px'
-            }}
-          />
+      {needRefresh && (
+        <div className="update-toast">
+          <span>Ny version tillgänglig!</span>
+          <button onClick={() => updateServiceWorker(true)} className="update-btn">
+            Uppdatera
+          </button>
+          <button onClick={() => setNeedRefresh(false)} className="update-close-btn">
+            Stäng
+          </button>
         </div>
+      )}
+
+      <header className="header">
+        <h1>SchemeCreator</h1>
+        <input
+          type="text"
+          className="pattern-name-input"
+          value={patternName}
+          onChange={(e) => setPatternName(e.target.value)}
+          placeholder="Mönsternamn..."
+        />
       </header>
 
-      <div className="main-content">
-        <div className="sidebar">
-          <Toolbar
-            gridSize={gridSize}
-            onGridSizeChange={handleGridSizeChange}
-            onSave={handleSave}
-            onLoad={handleLoad}
-            onExport={handleExport}
-            onClear={handleClear}
-            zoomIn={() => transformComponentRef.current?.zoomIn()}
-            zoomOut={() => transformComponentRef.current?.zoomOut()}
-            resetTransform={() => transformComponentRef.current?.resetTransform()}
-          />
+      <div className="canvas-area">
+        <TransformWrapper
+          ref={transformComponentRef}
+          initialScale={1}
+          minScale={0.3}
+          maxScale={5}
+          centerOnInit
+          wheel={{ step: 0.1 }}
+        >
+          <TransformComponent
+            wrapperStyle={{ width: '100%', height: '100%' }}
+            contentStyle={{ width: '100%', height: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center' }}
+          >
+            <Grid
+              cells={cells}
+              zoom={1}
+              onCellClick={handleCellClick}
+            />
+          </TransformComponent>
+        </TransformWrapper>
+      </div>
+
+      {/* Popup panels */}
+      {activePanel === 'color' && (
+        <PopupPanel title="Välj färg" onClose={() => setActivePanel(null)}>
           <ColorPalette
             colors={PALETTE}
             selectedColor={selectedColor}
-            onSelectColor={setSelectedColor}
+            onSelectColor={handleSelectColor}
           />
-        </div>
+        </PopupPanel>
+      )}
 
-        <div className="canvas-area">
-          <TransformWrapper
-            ref={transformComponentRef}
-            initialScale={1}
-            minScale={0.5}
-            maxScale={4}
-            centerOnInit
-            wheel={{ step: 0.1 }}
-          >
-            <TransformComponent
-              wrapperStyle={{ width: '100%', height: '100%' }}
-              contentStyle={{ width: '100%', height: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center' }}
-            >
-              <Grid
-                cells={cells}
-                zoom={1}
-                onCellClick={handleCellClick}
-              />
-            </TransformComponent>
-          </TransformWrapper>
-        </div>
-      </div>
+      {activePanel === 'grid' && (
+        <PopupPanel title="Rutnätsinställningar" onClose={() => setActivePanel(null)}>
+          <div className="panel-section">
+            <label className="panel-label">Storlek</label>
+            <div className="grid-size-options">
+              {gridSizes.map(size => (
+                <button
+                  key={size}
+                  className={`grid-size-btn ${gridSize === size ? 'selected' : ''}`}
+                  onClick={() => handleGridSizeChange(size)}
+                >
+                  {size}x{size}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="panel-section">
+            <button className="clear-btn" onClick={handleClear}>
+              Rensa allt
+            </button>
+          </div>
+        </PopupPanel>
+      )}
+
+      {activePanel === 'file' && (
+        <PopupPanel title="Arkiv" onClose={() => setActivePanel(null)}>
+          <div className="file-actions">
+            <button className="file-action-btn" onClick={handleSave}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+                <polyline points="17 21 17 13 7 13 7 21" />
+                <polyline points="7 3 7 8 15 8" />
+              </svg>
+              Spara JSON
+            </button>
+            <button className="file-action-btn" onClick={handleLoad}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+              </svg>
+              Ladda JSON
+            </button>
+            <button className="file-action-btn export" onClick={handleExport}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                <polyline points="14 2 14 8 20 8" />
+                <line x1="16" y1="13" x2="8" y2="13" />
+                <line x1="16" y1="17" x2="8" y2="17" />
+              </svg>
+              Exportera PDF
+            </button>
+          </div>
+        </PopupPanel>
+      )}
+
+      <BottomBar
+        activePanel={activePanel}
+        onTogglePanel={togglePanel}
+        selectedColor={selectedColor}
+        zoomIn={() => transformComponentRef.current?.zoomIn()}
+        zoomOut={() => transformComponentRef.current?.zoomOut()}
+        resetTransform={() => transformComponentRef.current?.resetTransform()}
+      />
     </div>
   );
 }

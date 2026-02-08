@@ -1,11 +1,12 @@
 import React from 'react';
 import type { CellData } from '../types';
+import { isDark } from '../utils/color';
 
 interface CellProps {
     data: CellData;
     size: number;
     onClick: () => void;
-    onMouseEnter: (e: React.MouseEvent) => void;
+    onMouseEnter: () => void;
 }
 
 export const Cell: React.FC<CellProps> = React.memo(({ data, size, onClick, onMouseEnter }) => {
@@ -33,15 +34,3 @@ export const Cell: React.FC<CellProps> = React.memo(({ data, size, onClick, onMo
         </div>
     );
 });
-
-// Helper to determine text color based on background
-function isDark(color: string): boolean {
-    // Simple heuristic for hex codes
-    const hex = color.replace('#', '');
-    const r = parseInt(hex.substr(0, 2), 16);
-    const g = parseInt(hex.substr(2, 2), 16);
-    const b = parseInt(hex.substr(4, 2), 16);
-    if (isNaN(r)) return false; // Fallback for named colors if any
-    const yiq = ((r * 299) + (g * 587) + (b * 114)) / 1000;
-    return yiq < 128;
-}

@@ -12,6 +12,8 @@ interface GridProps {
 export const Grid: React.FC<GridProps> = ({ cells, onCellClick }) => {
     const isDrawing = useRef(false);
 
+    if (!cells || cells.length === 0) return null;
+
     // We handle mouse down/up/enter to allow "painting" by dragging
     const handleMouseDown = (row: number, col: number) => {
         isDrawing.current = true;

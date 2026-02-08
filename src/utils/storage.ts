@@ -23,6 +23,7 @@ export const loadPattern = (file: File): Promise<Pattern> => {
                 // Basic validation
                 if (!pattern.cells || !pattern.width || !pattern.height) {
                     reject(new Error('Invalid pattern file format'));
+                    return;
                 }
                 resolve(pattern);
             } catch (error) {
