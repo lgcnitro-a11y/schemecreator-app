@@ -25,6 +25,14 @@ export const loadPattern = (file: File): Promise<Pattern> => {
                     reject(new Error('Invalid pattern file format'));
                     return;
                 }
+                // Backward compatibility: add empty overlay if missing
+                if (!pattern.overlay) {
+                    pattern.overlay = {
+                        backstitchLines: [],
+                        arrows: [],
+                        annotations: [],
+                    };
+                }
                 resolve(pattern);
             } catch (error) {
                 reject(error);

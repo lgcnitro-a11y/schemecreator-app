@@ -1,21 +1,58 @@
 import React from 'react';
-import type { ColorOption } from '../types';
+import type { ColorOption, OverlayTool } from '../types';
 
-type PanelType = 'color' | 'grid' | 'file' | null;
+type PanelType = 'color' | 'grid' | 'file' | 'tools' | null;
 
 interface BottomBarProps {
     activePanel: PanelType;
     onTogglePanel: (panel: PanelType) => void;
     selectedColor: ColorOption | null;
+    activeTool: OverlayTool;
     zoomIn: () => void;
     zoomOut: () => void;
     resetTransform: () => void;
 }
 
+const toolIcons: Record<OverlayTool, React.ReactNode> = {
+    paint: (
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M12 19l7-7 3 3-7 7-3-3z" />
+            <path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z" />
+        </svg>
+    ),
+    backstitch: (
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+            <line x1="4" y1="20" x2="20" y2="4" />
+            <circle cx="4" cy="20" r="2" fill="currentColor" />
+            <circle cx="20" cy="4" r="2" fill="currentColor" />
+        </svg>
+    ),
+    arrow: (
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <line x1="5" y1="12" x2="19" y2="12" />
+            <polyline points="12 5 19 12 12 19" />
+        </svg>
+    ),
+    text: (
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <polyline points="4 7 4 4 20 4 20 7" />
+            <line x1="9.5" y1="20" x2="14.5" y2="20" />
+            <line x1="12" y1="4" x2="12" y2="20" />
+        </svg>
+    ),
+    'eraser-overlay': (
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M20 20H7L3 16 13 6l8 8-4 4" />
+            <line x1="6" y1="20" x2="20" y2="20" />
+        </svg>
+    ),
+};
+
 export const BottomBar: React.FC<BottomBarProps> = ({
     activePanel,
     onTogglePanel,
     selectedColor,
+    activeTool,
     zoomIn,
     zoomOut,
     resetTransform
@@ -42,19 +79,14 @@ export const BottomBar: React.FC<BottomBarProps> = ({
             </button>
 
             <button
-                className={`bottom-bar-btn ${activePanel === 'grid' ? 'active' : ''}`}
-                onClick={() => onTogglePanel('grid')}
-                title="Rutnät"
+                className={`bottom-bar-btn ${activePanel === 'tools' ? 'active' : ''}`}
+                onClick={() => onTogglePanel('tools')}
+                title="Verktyg"
             >
                 <div className="bottom-bar-icon">
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <rect x="3" y="3" width="7" height="7" />
-                        <rect x="14" y="3" width="7" height="7" />
-                        <rect x="3" y="14" width="7" height="7" />
-                        <rect x="14" y="14" width="7" height="7" />
-                    </svg>
+                    {toolIcons[activeTool]}
                 </div>
-                <span className="bottom-bar-label">Rutnät</span>
+                <span className="bottom-bar-label">Verktyg</span>
             </button>
 
             <div className="bottom-bar-zoom">
@@ -80,6 +112,22 @@ export const BottomBar: React.FC<BottomBarProps> = ({
                     </svg>
                 </button>
             </div>
+
+            <button
+                className={`bottom-bar-btn ${activePanel === 'grid' ? 'active' : ''}`}
+                onClick={() => onTogglePanel('grid')}
+                title="Rutnät"
+            >
+                <div className="bottom-bar-icon">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <rect x="3" y="3" width="7" height="7" />
+                        <rect x="14" y="3" width="7" height="7" />
+                        <rect x="3" y="14" width="7" height="7" />
+                        <rect x="14" y="14" width="7" height="7" />
+                    </svg>
+                </div>
+                <span className="bottom-bar-label">Rutnät</span>
+            </button>
 
             <button
                 className={`bottom-bar-btn ${activePanel === 'file' ? 'active' : ''}`}

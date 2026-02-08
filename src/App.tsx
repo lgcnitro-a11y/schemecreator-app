@@ -5,9 +5,15 @@ import { Grid } from './components/Grid';
 import { BottomBar } from './components/BottomBar';
 import { PopupPanel } from './components/PopupPanel';
 import { ColorPalette } from './components/ColorPalette';
-import type { CellData, ColorOption, Pattern } from './types';
+import { ToolsPanel } from './components/ToolsPanel';
+import { ArrowDirectionPicker } from './components/ArrowDirectionPicker';
+import type {
+  CellData, ColorOption, Pattern, OverlayData, OverlayTool,
+  DrawingState, GridPoint, ArrowDirection, BackstitchLine, ArrowMarker, TextAnnotation
+} from './types';
 import { savePattern, loadPattern } from './utils/storage';
 import { exportToPDF } from './utils/pdfExport';
+import { isAdjacentPoint } from './utils/grid';
 
 // @ts-ignore
 import { useRegisterSW } from 'virtual:pwa-register/react';
@@ -25,7 +31,13 @@ const PALETTE: ColorOption[] = [
   { symbol: '□', color: '#ffffff', name: 'Vit' },
 ];
 
-type PanelType = 'color' | 'grid' | 'file' | null;
+const emptyOverlay: OverlayData = {
+  backstitchLines: [],
+  arrows: [],
+  annotations: [],
+};
+
+type PanelType = 'color' | 'grid' | 'file' | 'tools' | null;
 
 function App() {
   const {
@@ -58,6 +70,26 @@ function App() {
   const [patternName, setPatternName] = useState('Mitt Mönster');
   const [activePanel, setActivePanel] = useState<PanelType>(null);
 
+  // Overlay state
+  const [overlay, setOverlay] = useState<OverlayData>({ ...emptyOverlay });
+  const [activeTool, setActiveTool] = useState<OverlayTool>('paint');
+  const [drawingState, setDrawingState] = useState<DrawingState | null>(null);
+  const [hoveredPoint, setHoveredPoint] = useState<GridPoint | null>(null);
+  const [lineColor, setLineColor] = useState<string>('#000000');
+  const [lineWidth, setLineWidth] = useState<number>(3);
+
+  // Arrow direction picker state
+  const [arrowPickerState, setArrowPickerState] = useState<{
+    point: GridPoint;
+    screenPos: { x: number; y: number };
+  } | null>(null);
+
+  // Text input state
+  const [textInputState, setTextInputState] = useState<{
+    point: GridPoint;
+    text: string;
+  } | null>(null);
+
   const transformComponentRef = useRef<ReactZoomPanPinchRef | null>(null);
 
   const initializeGrid = (size: number) => {
@@ -68,25 +100,118 @@ function App() {
     setCells(prev => {
       const newCells = [...prev];
       const newRow = [...newCells[row]];
-
       if (selectedColor) {
-        newRow[col] = {
-          color: selectedColor.color,
-          symbol: selectedColor.symbol
-        };
+        newRow[col] = { color: selectedColor.color, symbol: selectedColor.symbol };
       } else {
         newRow[col] = { color: null, symbol: null };
       }
-
       newCells[row] = newRow;
       return newCells;
     });
   }, [selectedColor]);
 
+  // Overlay callbacks
+  const handleGridPointClick = useCallback((point: GridPoint) => {
+    if (activeTool === 'backstitch') {
+      setDrawingState(prev => {
+        if (!prev || !prev.startPoint) {
+          return { startPoint: point, previewEndPoint: null };
+        }
+        // Second click - create line if adjacent
+        if (isAdjacentPoint(prev.startPoint, point)) {
+          const newLine: BackstitchLine = {
+            id: crypto.randomUUID(),
+            start: prev.startPoint,
+            end: point,
+            color: lineColor,
+            lineWidth: lineWidth,
+          };
+          setOverlay(o => ({
+            ...o,
+            backstitchLines: [...o.backstitchLines, newLine],
+          }));
+        }
+        return { startPoint: null, previewEndPoint: null };
+      });
+    } else if (activeTool === 'arrow') {
+      // Show direction picker at this point
+      // Calculate screen position for the picker
+      setArrowPickerState({
+        point,
+        screenPos: { x: window.innerWidth / 2, y: window.innerHeight / 2 - 80 },
+      });
+    } else if (activeTool === 'text') {
+      setTextInputState({ point, text: '' });
+    } else if (activeTool === 'eraser-overlay') {
+      // Eraser handled in OverlaySVG click handler
+    }
+  }, [activeTool, lineColor, lineWidth]);
+
+  const handleGridPointHover = useCallback((point: GridPoint | null) => {
+    setHoveredPoint(point);
+    if (activeTool === 'backstitch' && point) {
+      setDrawingState(prev => {
+        if (prev?.startPoint) {
+          return { ...prev, previewEndPoint: point };
+        }
+        return prev;
+      });
+    }
+  }, [activeTool]);
+
+  const handleDeleteLine = useCallback((id: string) => {
+    setOverlay(o => ({ ...o, backstitchLines: o.backstitchLines.filter(l => l.id !== id) }));
+  }, []);
+
+  const handleDeleteArrow = useCallback((id: string) => {
+    setOverlay(o => ({ ...o, arrows: o.arrows.filter(a => a.id !== id) }));
+  }, []);
+
+  const handleDeleteAnnotation = useCallback((id: string) => {
+    setOverlay(o => ({ ...o, annotations: o.annotations.filter(a => a.id !== id) }));
+  }, []);
+
+  const handleArrowDirection = useCallback((direction: ArrowDirection) => {
+    if (!arrowPickerState) return;
+    const newArrow: ArrowMarker = {
+      id: crypto.randomUUID(),
+      position: arrowPickerState.point,
+      direction,
+      color: lineColor,
+    };
+    setOverlay(o => ({ ...o, arrows: [...o.arrows, newArrow] }));
+    setArrowPickerState(null);
+  }, [arrowPickerState, lineColor]);
+
+  const handleTextSubmit = useCallback(() => {
+    if (!textInputState || !textInputState.text.trim()) {
+      setTextInputState(null);
+      return;
+    }
+    const newAnnotation: TextAnnotation = {
+      id: crypto.randomUUID(),
+      position: textInputState.point,
+      text: textInputState.text.trim(),
+      fontSize: 0.8,
+      color: lineColor,
+    };
+    setOverlay(o => ({ ...o, annotations: [...o.annotations, newAnnotation] }));
+    setTextInputState(null);
+  }, [textInputState, lineColor]);
+
+  const handleSelectTool = useCallback((tool: OverlayTool) => {
+    setActiveTool(tool);
+    setDrawingState(null);
+    setArrowPickerState(null);
+    setTextInputState(null);
+    setActivePanel(null);
+  }, []);
+
   const handleGridSizeChange = (newSize: number) => {
     if (window.confirm('Att byta storlek kommer att rensa nuvarande mönster. Vill du fortsätta?')) {
       setGridSize(newSize);
       initializeGrid(newSize);
+      setOverlay({ ...emptyOverlay });
     }
   };
 
@@ -96,6 +221,7 @@ function App() {
       width: gridSize,
       height: gridSize,
       cells: cells,
+      overlay: overlay,
       createdAt: new Date().toISOString()
     };
     savePattern(pattern);
@@ -113,6 +239,7 @@ function App() {
           setPatternName(pattern.name);
           setGridSize(pattern.width);
           setCells(pattern.cells);
+          setOverlay(pattern.overlay || { ...emptyOverlay });
           transformComponentRef.current?.resetTransform();
           setActivePanel(null);
         } catch (err) {
@@ -129,6 +256,7 @@ function App() {
       width: gridSize,
       height: gridSize,
       cells: cells,
+      overlay: overlay,
       createdAt: new Date().toISOString()
     };
     exportToPDF(pattern, PALETTE);
@@ -137,6 +265,7 @@ function App() {
   const handleClear = () => {
     if (window.confirm('Är du säker på att du vill rensa allt?')) {
       initializeGrid(gridSize);
+      setOverlay({ ...emptyOverlay });
     }
   };
 
@@ -146,6 +275,7 @@ function App() {
 
   const handleSelectColor = (color: ColorOption | null) => {
     setSelectedColor(color);
+    setActiveTool('paint');
     setActivePanel(null);
   };
 
@@ -174,6 +304,13 @@ function App() {
           onChange={(e) => setPatternName(e.target.value)}
           placeholder="Mönsternamn..."
         />
+        {activeTool !== 'paint' && (
+          <span className="active-tool-badge">
+            {activeTool === 'backstitch' ? 'Stygnlinje' :
+             activeTool === 'arrow' ? 'Pil' :
+             activeTool === 'text' ? 'Text' : 'Radera'}
+          </span>
+        )}
       </header>
 
       <div className="canvas-area">
@@ -184,6 +321,7 @@ function App() {
           maxScale={5}
           centerOnInit
           wheel={{ step: 0.1 }}
+          panning={{ disabled: activeTool !== 'paint' }}
         >
           <TransformComponent
             wrapperStyle={{ width: '100%', height: '100%' }}
@@ -193,10 +331,56 @@ function App() {
               cells={cells}
               zoom={1}
               onCellClick={handleCellClick}
+              overlay={overlay}
+              activeTool={activeTool}
+              drawingState={drawingState}
+              hoveredPoint={hoveredPoint}
+              onGridPointClick={handleGridPointClick}
+              onGridPointHover={handleGridPointHover}
+              onDeleteLine={handleDeleteLine}
+              onDeleteArrow={handleDeleteArrow}
+              onDeleteAnnotation={handleDeleteAnnotation}
             />
           </TransformComponent>
         </TransformWrapper>
       </div>
+
+      {/* Arrow direction picker */}
+      {arrowPickerState && (
+        <ArrowDirectionPicker
+          position={arrowPickerState.screenPos}
+          onSelect={handleArrowDirection}
+          onCancel={() => setArrowPickerState(null)}
+        />
+      )}
+
+      {/* Text input dialog */}
+      {textInputState && (
+        <>
+          <div className="popup-overlay" onClick={() => setTextInputState(null)} />
+          <div className="text-input-dialog">
+            <span className="popup-title">Ange text/nummer</span>
+            <input
+              type="text"
+              className="text-annotation-input"
+              value={textInputState.text}
+              onChange={(e) => setTextInputState(prev => prev ? { ...prev, text: e.target.value } : null)}
+              onKeyDown={(e) => { if (e.key === 'Enter') handleTextSubmit(); }}
+              autoFocus
+              placeholder="t.ex. 99, ABC..."
+              maxLength={10}
+            />
+            <div className="text-input-actions">
+              <button className="text-input-cancel" onClick={() => setTextInputState(null)}>
+                Avbryt
+              </button>
+              <button className="text-input-confirm" onClick={handleTextSubmit}>
+                Placera
+              </button>
+            </div>
+          </div>
+        </>
+      )}
 
       {/* Popup panels */}
       {activePanel === 'color' && (
@@ -205,6 +389,19 @@ function App() {
             colors={PALETTE}
             selectedColor={selectedColor}
             onSelectColor={handleSelectColor}
+          />
+        </PopupPanel>
+      )}
+
+      {activePanel === 'tools' && (
+        <PopupPanel title="Verktyg" onClose={() => setActivePanel(null)}>
+          <ToolsPanel
+            activeTool={activeTool}
+            onSelectTool={handleSelectTool}
+            lineColor={lineColor}
+            onLineColorChange={setLineColor}
+            lineWidth={lineWidth}
+            onLineWidthChange={setLineWidth}
           />
         </PopupPanel>
       )}
@@ -267,6 +464,7 @@ function App() {
         activePanel={activePanel}
         onTogglePanel={togglePanel}
         selectedColor={selectedColor}
+        activeTool={activeTool}
         zoomIn={() => transformComponentRef.current?.zoomIn()}
         zoomOut={() => transformComponentRef.current?.zoomOut()}
         resetTransform={() => transformComponentRef.current?.resetTransform()}
