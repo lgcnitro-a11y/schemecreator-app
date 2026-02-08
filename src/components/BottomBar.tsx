@@ -106,7 +106,6 @@ export const BottomBar: React.FC<BottomBarProps> = ({
                     onClick={onUndo}
                     title="Ångra"
                     disabled={!canUndo}
-                    style={{ opacity: canUndo ? 1 : 0.5, cursor: canUndo ? 'pointer' : 'default' }}
                 >
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                         <path d="M9 14L4 9l5-5" />
