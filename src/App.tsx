@@ -3,6 +3,7 @@ import { TransformWrapper, TransformComponent } from 'react-zoom-pan-pinch';
 import type { ReactZoomPanPinchRef } from 'react-zoom-pan-pinch';
 import { Grid } from './components/Grid';
 import { BottomBar } from './components/BottomBar';
+import { Toolbar } from './components/Toolbar';
 import { PopupPanel } from './components/PopupPanel';
 import { ColorPalette } from './components/ColorPalette';
 import { ToolsPanel } from './components/ToolsPanel';
@@ -90,6 +91,26 @@ function App() {
     text: string;
   } | null>(null);
 
+  /* History State */
+  const [history, setHistory] = useState<{ cells: CellData[][], overlay: OverlayData }[]>([]);
+
+  const addToHistory = () => {
+    setHistory(prev => [...prev, { cells: JSON.parse(JSON.stringify(cells)), overlay: JSON.parse(JSON.stringify(overlay)) }]);
+  };
+
+  const handleUndo = () => {
+    setHistory(prev => {
+      if (prev.length === 0) return prev;
+      const newHistory = [...prev];
+      const previousState = newHistory.pop();
+      if (previousState) {
+        setCells(previousState.cells);
+        setOverlay(previousState.overlay);
+      }
+      return newHistory;
+    });
+  };
+
   const transformComponentRef = useRef<ReactZoomPanPinchRef | null>(null);
 
   const initializeGrid = (size: number) => {
@@ -97,6 +118,7 @@ function App() {
   };
 
   const handleCellClick = useCallback((row: number, col: number) => {
+    // Note: History is handled via onStrokeStart for painting
     setCells(prev => {
       const newCells = [...prev];
       const newRow = [...newCells[row]];
@@ -119,6 +141,7 @@ function App() {
         }
         // Second click - create line if adjacent
         if (isAdjacentPoint(prev.startPoint, point)) {
+          addToHistory(); // Save before adding line
           const newLine: BackstitchLine = {
             id: crypto.randomUUID(),
             start: prev.startPoint,
@@ -145,7 +168,7 @@ function App() {
     } else if (activeTool === 'eraser-overlay') {
       // Eraser handled in OverlaySVG click handler
     }
-  }, [activeTool, lineColor, lineWidth]);
+  }, [activeTool, lineColor, lineWidth, cells, overlay]); // Added cells/overlay dependency for history
 
   const handleGridPointHover = useCallback((point: GridPoint | null) => {
     setHoveredPoint(point);
@@ -160,19 +183,23 @@ function App() {
   }, [activeTool]);
 
   const handleDeleteLine = useCallback((id: string) => {
+    addToHistory();
     setOverlay(o => ({ ...o, backstitchLines: o.backstitchLines.filter(l => l.id !== id) }));
-  }, []);
+  }, [cells, overlay]);
 
   const handleDeleteArrow = useCallback((id: string) => {
+    addToHistory();
     setOverlay(o => ({ ...o, arrows: o.arrows.filter(a => a.id !== id) }));
-  }, []);
+  }, [cells, overlay]);
 
   const handleDeleteAnnotation = useCallback((id: string) => {
+    addToHistory();
     setOverlay(o => ({ ...o, annotations: o.annotations.filter(a => a.id !== id) }));
-  }, []);
+  }, [cells, overlay]);
 
   const handleArrowDirection = useCallback((direction: ArrowDirection) => {
     if (!arrowPickerState) return;
+    addToHistory();
     const newArrow: ArrowMarker = {
       id: crypto.randomUUID(),
       position: arrowPickerState.point,
@@ -181,13 +208,14 @@ function App() {
     };
     setOverlay(o => ({ ...o, arrows: [...o.arrows, newArrow] }));
     setArrowPickerState(null);
-  }, [arrowPickerState, lineColor]);
+  }, [arrowPickerState, lineColor, cells, overlay]);
 
   const handleTextSubmit = useCallback(() => {
     if (!textInputState || !textInputState.text.trim()) {
       setTextInputState(null);
       return;
     }
+    addToHistory();
     const newAnnotation: TextAnnotation = {
       id: crypto.randomUUID(),
       position: textInputState.point,
@@ -197,7 +225,7 @@ function App() {
     };
     setOverlay(o => ({ ...o, annotations: [...o.annotations, newAnnotation] }));
     setTextInputState(null);
-  }, [textInputState, lineColor]);
+  }, [textInputState, lineColor, cells, overlay]);
 
   const handleSelectTool = useCallback((tool: OverlayTool) => {
     setActiveTool(tool);
@@ -209,6 +237,8 @@ function App() {
 
   const handleGridSizeChange = (newSize: number) => {
     if (window.confirm('Att byta storlek kommer att rensa nuvarande mönster. Vill du fortsätta?')) {
+      // No history for size change as it clears everything
+      setHistory([]);
       setGridSize(newSize);
       initializeGrid(newSize);
       setOverlay({ ...emptyOverlay });
@@ -307,42 +337,62 @@ function App() {
         {activeTool !== 'paint' && (
           <span className="active-tool-badge">
             {activeTool === 'backstitch' ? 'Stygnlinje' :
-             activeTool === 'arrow' ? 'Pil' :
-             activeTool === 'text' ? 'Text' : 'Radera'}
+              activeTool === 'arrow' ? 'Pil' :
+                activeTool === 'text' ? 'Text' : 'Radera'}
           </span>
         )}
       </header>
 
-      <div className="canvas-area">
-        <TransformWrapper
-          ref={transformComponentRef}
-          initialScale={1}
-          minScale={0.3}
-          maxScale={5}
-          centerOnInit
-          wheel={{ step: 0.1 }}
-          panning={{ disabled: activeTool !== 'paint' }}
-        >
-          <TransformComponent
-            wrapperStyle={{ width: '100%', height: '100%' }}
-            contentStyle={{ width: '100%', height: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center' }}
+      <div className="main-content">
+        <div className="sidebar">
+          <Toolbar
+            gridSize={gridSize}
+            onGridSizeChange={handleGridSizeChange}
+            onSave={handleSave}
+            onLoad={handleLoad}
+            onExport={handleExport}
+            onClear={handleClear}
+            zoomIn={() => transformComponentRef.current?.zoomIn()}
+            zoomOut={() => transformComponentRef.current?.zoomOut()}
+            resetTransform={() => transformComponentRef.current?.resetTransform()}
+            onUndo={handleUndo}
+            canUndo={history.length > 0}
+          />
+        </div>
+
+        <div className="canvas-area">
+          <TransformWrapper
+            ref={transformComponentRef}
+            initialScale={1}
+            minScale={0.3}
+            maxScale={5}
+            centerOnInit
+            limitToBounds={false}
+            wheel={{ step: 0.1 }}
+            panning={{ disabled: false }}
           >
-            <Grid
-              cells={cells}
-              zoom={1}
-              onCellClick={handleCellClick}
-              overlay={overlay}
-              activeTool={activeTool}
-              drawingState={drawingState}
-              hoveredPoint={hoveredPoint}
-              onGridPointClick={handleGridPointClick}
-              onGridPointHover={handleGridPointHover}
-              onDeleteLine={handleDeleteLine}
-              onDeleteArrow={handleDeleteArrow}
-              onDeleteAnnotation={handleDeleteAnnotation}
-            />
-          </TransformComponent>
-        </TransformWrapper>
+            <TransformComponent
+              wrapperStyle={{ width: '100%', height: '100%' }}
+              contentStyle={{ width: '100%', height: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center' }}
+            >
+              <Grid
+                cells={cells}
+                zoom={1}
+                onCellClick={handleCellClick}
+                overlay={overlay}
+                activeTool={activeTool}
+                drawingState={drawingState}
+                hoveredPoint={hoveredPoint}
+                onGridPointClick={handleGridPointClick}
+                onGridPointHover={handleGridPointHover}
+                onDeleteLine={handleDeleteLine}
+                onDeleteArrow={handleDeleteArrow}
+                onDeleteAnnotation={handleDeleteAnnotation}
+                onStrokeStart={addToHistory}
+              />
+            </TransformComponent>
+          </TransformWrapper>
+        </div>
       </div>
 
       {/* Arrow direction picker */}
@@ -468,6 +518,8 @@ function App() {
         zoomIn={() => transformComponentRef.current?.zoomIn()}
         zoomOut={() => transformComponentRef.current?.zoomOut()}
         resetTransform={() => transformComponentRef.current?.resetTransform()}
+        onUndo={handleUndo}
+        canUndo={history.length > 0}
       />
     </div>
   );

@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm ls:*)",
+      "Bash(npx --yes sharp-cli:*)",
+      "Bash(del \"C:\\\\Users\\\\Lars\\\\claude_projekt\\\\schemecreator\\\\public\\\\manifest.json\")",
+      "Bash(npm run build:*)",
+      "Bash(git add:*)",
+      "Bash(git rm:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(npx --yes netlify-cli:*)",
+      "Bash(npx netlify-cli link:*)",
+      "Bash(npx netlify-cli deploy:*)"
+    ]
+  }
+}

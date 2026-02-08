@@ -10,6 +10,8 @@ interface ToolbarProps {
     zoomIn: () => void;
     zoomOut: () => void;
     resetTransform: () => void;
+    onUndo?: () => void;
+    canUndo?: boolean;
 }
 
 export const Toolbar: React.FC<ToolbarProps> = ({
@@ -21,7 +23,9 @@ export const Toolbar: React.FC<ToolbarProps> = ({
     onClear,
     zoomIn,
     zoomOut,
-    resetTransform
+    // resetTransform,
+    onUndo,
+    canUndo
 }) => {
     return (
         <div className="card flex-col">
@@ -47,7 +51,14 @@ export const Toolbar: React.FC<ToolbarProps> = ({
                 <span className="label">Zoom</span>
                 <div className="flex-row">
                     <button onClick={() => zoomOut()} style={{ flex: 1 }}>-</button>
-                    <button onClick={() => resetTransform()} style={{ flex: 1 }}>100%</button>
+                    <button
+                        onClick={onUndo}
+                        style={{ flex: 1, opacity: canUndo ? 1 : 0.5, cursor: canUndo ? 'pointer' : 'default' }}
+                        title="Ångra"
+                        disabled={!canUndo}
+                    >
+                        ↺
+                    </button>
                     <button onClick={() => zoomIn()} style={{ flex: 1 }}>+</button>
                 </div>
             </div>

@@ -11,6 +11,8 @@ interface BottomBarProps {
     zoomIn: () => void;
     zoomOut: () => void;
     resetTransform: () => void;
+    onUndo?: () => void;
+    canUndo?: boolean;
 }
 
 const toolIcons: Record<OverlayTool, React.ReactNode> = {
@@ -55,7 +57,9 @@ export const BottomBar: React.FC<BottomBarProps> = ({
     activeTool,
     zoomIn,
     zoomOut,
-    resetTransform
+    // resetTransform,
+    onUndo,
+    canUndo
 }) => {
     return (
         <div className="bottom-bar">
@@ -97,10 +101,16 @@ export const BottomBar: React.FC<BottomBarProps> = ({
                         <line x1="21" y1="21" x2="16.65" y2="16.65" />
                     </svg>
                 </button>
-                <button className="zoom-btn" onClick={resetTransform} title="Återställ zoom">
+                <button
+                    className="zoom-btn"
+                    onClick={onUndo}
+                    title="Ångra"
+                    disabled={!canUndo}
+                    style={{ opacity: canUndo ? 1 : 0.5, cursor: canUndo ? 'pointer' : 'default' }}
+                >
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
-                        <path d="M3 3v5h5" />
+                        <path d="M9 14L4 9l5-5" />
+                        <path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5v0a5.5 5.5 0 0 1-5.5 5.5H11" />
                     </svg>
                 </button>
                 <button className="zoom-btn" onClick={zoomIn} title="Zooma in">
